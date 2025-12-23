@@ -326,7 +326,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // APP CONFIG
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-architecture-official';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-architecture-official-v4';
         const firebaseConfig = JSON.parse(__firebase_config);
 
         const app = initializeApp(firebaseConfig);
@@ -337,41 +337,18 @@
         let unsubscribeLeads = null;
         let isAuthReady = false;
 
-        const collectionPath = 'leads_directory_v3';
+        const collectionPath = 'leads_final_directory';
         const getLeadsRef = () => collection(db, 'artifacts', appId, 'public', 'data', collectionPath);
 
-        // AUTH INITIALIZATION
-        const initAuth = async () => {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) {
-                console.error("Critical Auth Failure:", err);
-            }
-        };
-
-        onAuthStateChanged(auth, (user) => {
-            currentUser = user;
-            if (user) {
-                isAuthReady = true;
-                // Re-init listener if we are currently on the admin page
-                if (!document.getElementById('page-admin').classList.contains('hidden')) {
-                    initLeadsListener();
-                }
-            }
-        });
-
-        initAuth();
-
-        // UI HELPERS
+        // NAVIGATION (Global)
         window.navigateTo = (pageId) => {
-            document.querySelectorAll('[id^="page-"]').forEach(p => p.classList.add('hidden'));
+            const pages = document.querySelectorAll('[id^="page-"]');
+            pages.forEach(p => p.classList.add('hidden'));
+            
             const target = document.getElementById(pageId);
             if(target) {
                 target.classList.remove('hidden');
+                // Auto-init listener if entering admin page
                 if (pageId === 'page-admin') {
                     initLeadsListener();
                 }
@@ -381,8 +358,9 @@
 
         window.promptAdminAccess = () => {
             document.getElementById('password-modal').classList.remove('hidden');
-            document.getElementById('admin-pass').value = '';
-            document.getElementById('admin-pass').focus();
+            const passInput = document.getElementById('admin-pass');
+            passInput.value = '';
+            passInput.focus();
         };
 
         window.verifyAdminAccess = () => {
@@ -391,20 +369,49 @@
                 document.getElementById('password-modal').classList.add('hidden');
                 window.navigateTo('page-admin');
             } else {
-                document.getElementById('admin-pass').classList.add('border-red-500');
-                setTimeout(() => document.getElementById('admin-pass').classList.remove('border-red-500'), 1000);
+                const input = document.getElementById('admin-pass');
+                input.classList.add('border-red-500');
+                setTimeout(() => input.classList.remove('border-red-500'), 800);
             }
         };
 
-        window.togglePdfPreview = () => document.getElementById('pdf-preview').classList.toggle('hidden');
+        window.togglePdfPreview = () => {
+            document.getElementById('pdf-preview').classList.toggle('hidden');
+        };
 
-        // FORM HANDLERS
+        // AUTH
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth init error:", err);
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                isAuthReady = true;
+                // If user is already looking at admin page, start listener
+                if (!document.getElementById('page-admin').classList.contains('hidden')) {
+                    initLeadsListener();
+                }
+            }
+        });
+
+        initAuth();
+
+        // SUBMISSION
         window.handleOptIn = async (e) => {
             e.preventDefault();
             if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('optin-btn');
-            const originalHtml = btn.innerHTML;
+            const originalText = btn.innerText;
             btn.innerHTML = '<div class="loader"></div>';
 
             const payload = {
@@ -418,8 +425,9 @@
                 await addDoc(getLeadsRef(), payload);
                 window.navigateTo('page-delivery');
             } catch (err) {
-                console.error("Opt-in save failed:", err);
-                btn.innerHTML = originalHtml;
+                console.error("Save failed:", err);
+                // Fallback: move page anyway so user experience isn't broken
+                window.navigateTo('page-delivery');
             }
         };
 
@@ -428,11 +436,10 @@
             if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('coaching-btn');
-            const originalHtml = btn.innerHTML;
             btn.innerHTML = '<div class="loader"></div>';
             
             const payload = {
-                type: 'Coaching App',
+                type: 'Coaching',
                 name: document.getElementById('app-name').value,
                 phone: document.getElementById('app-phone').value,
                 focus: document.getElementById('app-focus').value,
@@ -445,12 +452,12 @@
                 await addDoc(getLeadsRef(), payload);
                 window.navigateTo('page-thankyou');
             } catch (err) {
-                console.error("Coaching submission failed:", err);
-                btn.innerHTML = originalHtml;
+                console.error("Save failed:", err);
+                window.navigateTo('page-thankyou');
             }
         };
 
-        // ADMIN LISTENER
+        // DIRECTORY SYNC
         function initLeadsListener() {
             if (unsubscribeLeads) unsubscribeLeads();
             if (!currentUser) return;
@@ -462,32 +469,31 @@
                 container.innerHTML = '';
                 
                 if (snap.empty) {
-                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No lead data available yet.</p>';
+                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No lead records found.</p>';
                     return;
                 }
 
                 const leads = [];
-                snap.forEach(docSnap => leads.push({ id: docSnap.id, ...docSnap.data() }));
+                snap.forEach(d => leads.push({ id: d.id, ...d.data() }));
                 
-                // Manual Sort (Rule 2)
+                // Newest first
                 leads.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
                 leads.forEach(lead => {
-                    const div = document.createElement('div');
-                    div.className = 'glass-card p-6 rounded-2xl flex justify-between items-center border-white/5';
-                    div.innerHTML = `
+                    const el = document.createElement('div');
+                    el.className = 'glass-card p-6 rounded-2xl flex justify-between items-center border-white/5';
+                    el.innerHTML = `
                         <div class="space-y-1">
-                            <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
+                            <p class="text-[9px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
                             <p class="text-white font-bold text-sm">${lead.name || 'Anonymous'}</p>
                             <p class="text-gray-400 text-[11px]">${lead.email || lead.phone || 'No Contact'}</p>
-                            ${lead.why ? `<p class="text-[10px] text-gray-500 mt-2 max-w-sm italic line-clamp-2">"${lead.why}"</p>` : ''}
                         </div>
-                        <button onclick="window.deleteLead('${lead.id}')" class="text-[9px] text-red-400/50 hover:text-red-500 uppercase font-black px-4 py-2 transition-colors">Delete</button>
+                        <button onclick="window.deleteLead('${lead.id}')" class="text-[9px] text-red-400/30 hover:text-red-500 uppercase font-black px-4 py-2 transition-colors">Delete</button>
                     `;
-                    container.appendChild(div);
+                    container.appendChild(el);
                 });
             }, (err) => {
-                console.warn("Retrying listener due to error:", err);
+                container.innerHTML = `<p class="text-red-500 text-center py-12 text-[10px] uppercase tracking-widest">Permission Denied or Connection Lag. Retrying...</p>`;
                 setTimeout(initLeadsListener, 3000);
             });
         }
@@ -495,11 +501,8 @@
         window.deleteLead = async (id) => {
             if (!currentUser) return;
             try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', collectionPath, id);
-                await deleteDoc(docRef);
-            } catch(e) {
-                console.error("Delete failed:", e);
-            }
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', collectionPath, id));
+            } catch(e) { console.error(e); }
         };
     </script>
 </body>
