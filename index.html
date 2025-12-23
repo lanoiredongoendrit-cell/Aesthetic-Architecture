@@ -325,7 +325,8 @@
         import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-architecture-v1';
+        // APP CONFIG
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-arch-v1';
         const firebaseConfig = JSON.parse(__firebase_config);
 
         const app = initializeApp(firebaseConfig);
@@ -334,36 +335,39 @@
 
         let currentUser = null;
         let unsubscribeLeads = null;
+        let isAuthProcessing = true;
 
-        // AUTH INITIALIZATION (Rule 3)
+        // Path Rule: /artifacts/{appId}/public/data/{collectionName}
+        const collectionName = 'leads_final';
+        const getLeadsPath = () => collection(db, 'artifacts', appId, 'public', 'data', collectionName);
+
+        // AUTH INITIALIZATION (Rule 3: Auth first, then guard)
         const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+            isAuthProcessing = true;
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth Failure:", err);
+            } finally {
+                isAuthProcessing = false;
             }
         };
 
         onAuthStateChanged(auth, (user) => {
             currentUser = user;
             if (user) {
-                // When auth is ready, start listening for data
+                // Initialize listener immediately once auth confirmed
                 initLeadsListener();
             }
         });
 
         initAuth();
 
-        // Use mandatory pathing Rule 1: /artifacts/{appId}/users/{userId}/{collectionName}
-        // Even for "leads", in many environments, strict access requires specific pathing segments.
-        // If this is a multi-user shared app, we would use 'public/data'. 
-        // Based on the error, we'll ensure we follow strict pathing.
-        function getLeadsRef() {
-            if (!currentUser) return null;
-            // Public data path: /artifacts/{appId}/public/data/{collectionName}
-            return collection(db, 'artifacts', appId, 'public', 'data', 'leads_v2');
-        }
-
+        // UI HELPERS
         window.navigateTo = (pageId) => {
             document.querySelectorAll('[id^="page-"]').forEach(p => p.classList.add('hidden'));
             const target = document.getElementById(pageId);
@@ -382,9 +386,15 @@
 
         window.togglePdfPreview = () => document.getElementById('pdf-preview').classList.toggle('hidden');
 
+        // FORM HANDLERS
         window.handleOptIn = async (e) => {
             e.preventDefault();
-            if (!currentUser) return;
+            // Wait for auth if it's still processing
+            if (isAuthProcessing) return;
+            if (!currentUser) {
+                await initAuth();
+                if (!currentUser) return;
+            }
 
             const btn = document.getElementById('optin-btn');
             const originalHtml = btn.innerHTML;
@@ -398,17 +408,17 @@
             };
 
             try {
-                await addDoc(getLeadsRef(), payload);
+                await addDoc(getLeadsPath(), payload);
                 window.navigateTo('page-delivery');
             } catch (err) {
-                console.error("Save failed:", err);
+                console.error("Submission failed:", err);
                 btn.innerHTML = originalHtml;
             }
         };
 
         window.handleCoachingSubmit = async (e) => {
             e.preventDefault();
-            if (!currentUser) return;
+            if (isAuthProcessing || !currentUser) return;
 
             const btn = document.getElementById('coaching-btn');
             const originalHtml = btn.innerHTML;
@@ -425,34 +435,35 @@
             };
 
             try {
-                await addDoc(getLeadsRef(), payload);
+                await addDoc(getLeadsPath(), payload);
                 window.navigateTo('page-thankyou');
             } catch (err) {
-                console.error("Coaching save failed:", err);
+                console.error("Coaching failed:", err);
                 btn.innerHTML = originalHtml;
             }
         };
 
+        // ADMIN DIRECTORY LISTENER
         function initLeadsListener() {
             if (unsubscribeLeads) unsubscribeLeads();
             
-            const leadsRef = getLeadsRef();
-            if (!leadsRef) return;
+            // Wait until user exists (Rule 3)
+            if (!currentUser) return;
 
-            unsubscribeLeads = onSnapshot(leadsRef, (snap) => {
+            unsubscribeLeads = onSnapshot(getLeadsPath(), (snap) => {
                 const container = document.getElementById('leads-container');
                 if (!container) return;
                 container.innerHTML = '';
                 
                 if (snap.empty) {
-                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No leads detected in directory.</p>';
+                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No active leads in directory.</p>';
                     return;
                 }
 
                 const leads = [];
                 snap.forEach(docSnap => leads.push({ id: docSnap.id, ...docSnap.data() }));
                 
-                // Rule 2: Sort in memory
+                // Rule 2: In-memory sorting for stability
                 leads.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
                 leads.forEach(lead => {
@@ -462,7 +473,7 @@
                         <div class="space-y-1">
                             <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
                             <p class="text-white font-bold">${lead.name || 'Anonymous'}</p>
-                            <p class="text-gray-400 text-xs">${lead.email || lead.phone || 'No Contact Info'}</p>
+                            <p class="text-gray-400 text-xs">${lead.email || lead.phone || 'No Info'}</p>
                             ${lead.why ? `<p class="text-[10px] text-gray-600 mt-2 max-w-sm italic">"${lead.why}"</p>` : ''}
                         </div>
                         <button onclick="window.deleteLead('${lead.id}')" class="text-[10px] text-red-400/30 hover:text-red-500 uppercase font-black px-4 py-2">Delete</button>
@@ -470,17 +481,16 @@
                     container.appendChild(div);
                 });
             }, (err) => {
-                console.error("Snapshot error:", err);
-                const container = document.getElementById('leads-container');
-                if (container) container.innerHTML = `<p class="text-red-500 text-center text-xs py-10">Access Denied: Restricted Protocol</p>`;
+                console.warn("Retrying directory listener...", err);
+                // Attempt to re-init after a delay if error occurs (likely auth lag)
+                setTimeout(initLeadsListener, 2000);
             });
         }
 
         window.deleteLead = async (id) => {
             if (!currentUser) return;
             try {
-                const leadsRef = getLeadsRef();
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'leads_v2', id);
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, id);
                 await deleteDoc(docRef);
             } catch(e) {
                 console.error("Delete Error:", e);
