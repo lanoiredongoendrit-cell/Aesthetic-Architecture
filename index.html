@@ -143,11 +143,11 @@
     <div class="glow-overlay"></div>
 
     <nav class="p-8 flex justify-between items-center max-w-6xl mx-auto relative z-10">
-        <div class="text-xl font-800 tracking-tighter uppercase text-white cursor-pointer" onclick="location.reload()">Aesthetic<span class="text-yellow-500">Architecture</span></div>
+        <div class="text-xl font-800 tracking-tighter uppercase text-white cursor-pointer" onclick="window.navigateTo('page-optin')">Aesthetic<span class="text-yellow-500">Architecture</span></div>
         <div class="hidden md:flex space-x-10 text-[10px] font-bold tracking-[0.3em] text-gray-500 uppercase">
-            <span class="hover:text-yellow-400 cursor-pointer" onclick="navigateTo('page-optin')">Protocol</span>
-            <span class="hover:text-yellow-400 cursor-pointer" onclick="navigateTo('page-application')">Coaching</span>
-            <span class="hover:text-yellow-400 cursor-pointer" onclick="promptAdminAccess()">Master</span>
+            <span class="hover:text-yellow-400 cursor-pointer" onclick="window.navigateTo('page-optin')">Protocol</span>
+            <span class="hover:text-yellow-400 cursor-pointer" onclick="window.navigateTo('page-application')">Coaching</span>
+            <span class="hover:text-yellow-400 cursor-pointer" onclick="window.promptAdminAccess()">Master</span>
         </div>
     </nav>
 
@@ -235,7 +235,7 @@
                 <div class="p-16 text-center bg-yellow-500/[0.02]">
                     <h3 class="text-2xl font-bold mb-6 text-white tracking-tight">Personalized Strategic Intake</h3>
                     <p class="text-gray-400 text-sm mb-10 max-w-md mx-auto">Skip the trial-and-error with a custom assessment.</p>
-                    <button onclick="navigateTo('page-application')" class="btn-primary px-12 py-5 rounded-2xl font-bold text-[10px] uppercase tracking-[0.3em]">
+                    <button onclick="window.navigateTo('page-application')" class="btn-primary px-12 py-5 rounded-2xl font-bold text-[10px] uppercase tracking-[0.3em]">
                         Apply for Coaching
                     </button>
                 </div>
@@ -288,14 +288,14 @@
         <div id="page-thankyou" class="hidden step-transition py-24 text-center">
             <h2 class="text-5xl font-bold mb-6 text-gradient tracking-tighter">Application Queued</h2>
             <p class="text-gray-400 font-light max-w-md mx-auto mb-16">We will finalize your assessment within 48 business hours.</p>
-            <button onclick="location.reload()" class="text-[10px] font-bold uppercase tracking-[0.5em] text-gray-600">Return to Dashboard</button>
+            <button onclick="window.navigateTo('page-optin')" class="text-[10px] font-bold uppercase tracking-[0.5em] text-gray-600">Return to Dashboard</button>
         </div>
 
         <!-- ADMIN VIEW (LEADS) -->
         <div id="page-admin" class="hidden step-transition">
             <div class="flex justify-between items-center mb-10">
                 <h2 class="text-3xl font-bold text-white tracking-tight">Master Lead Directory</h2>
-                <button onclick="navigateTo('page-optin')" class="text-xs text-gray-500 hover:text-white uppercase tracking-widest">Close</button>
+                <button onclick="window.navigateTo('page-optin')" class="text-xs text-gray-500 hover:text-white uppercase tracking-widest">Close</button>
             </div>
             <div id="leads-container" class="space-y-4">
                 <div class="flex justify-center py-10"><div class="loader"></div></div>
@@ -308,7 +308,7 @@
                 <h3 class="text-white font-bold mb-6 tracking-tight">Access Protocol Required</h3>
                 <input type="password" id="admin-pass" placeholder="Enter Access Code" class="input-field w-full p-4 rounded-xl text-center text-sm mb-6 tracking-widest">
                 <div class="flex flex-col gap-3">
-                    <button onclick="verifyAdminAccess()" class="btn-primary w-full py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest">Verify Identity</button>
+                    <button onclick="window.verifyAdminAccess()" class="btn-primary w-full py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest">Verify Identity</button>
                     <button onclick="document.getElementById('password-modal').classList.add('hidden')" class="text-[9px] text-gray-600 uppercase tracking-widest mt-2">Cancel</button>
                 </div>
             </div>
@@ -317,7 +317,7 @@
 
     <footer class="text-center pb-12 opacity-40 relative z-10">
         <p class="text-[9px] font-bold text-gray-500 uppercase tracking-[0.6em] mb-4">&copy; 2024 AESTHETIC ARCHITECTURE PROTOCOL</p>
-        <button onclick="promptAdminAccess()" class="text-[8px] text-gray-700 hover:text-yellow-600 uppercase tracking-[0.2em] transition-colors cursor-pointer">Internal Lead Portal</button>
+        <button onclick="window.promptAdminAccess()" class="text-[8px] text-gray-700 hover:text-yellow-600 uppercase tracking-[0.2em] transition-colors cursor-pointer">Internal Lead Portal</button>
     </footer>
 
     <script type="module">
@@ -326,7 +326,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // APP CONFIG
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-arch-v1';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'aesthetic-architecture-official';
         const firebaseConfig = JSON.parse(__firebase_config);
 
         const app = initializeApp(firebaseConfig);
@@ -335,15 +335,13 @@
 
         let currentUser = null;
         let unsubscribeLeads = null;
-        let isAuthProcessing = true;
+        let isAuthReady = false;
 
-        // Path Rule: /artifacts/{appId}/public/data/{collectionName}
-        const collectionName = 'leads_final';
-        const getLeadsPath = () => collection(db, 'artifacts', appId, 'public', 'data', collectionName);
+        const collectionPath = 'leads_directory_v3';
+        const getLeadsRef = () => collection(db, 'artifacts', appId, 'public', 'data', collectionPath);
 
-        // AUTH INITIALIZATION (Rule 3: Auth first, then guard)
+        // AUTH INITIALIZATION
         const initAuth = async () => {
-            isAuthProcessing = true;
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
@@ -351,17 +349,18 @@
                     await signInAnonymously(auth);
                 }
             } catch (err) {
-                console.error("Auth Failure:", err);
-            } finally {
-                isAuthProcessing = false;
+                console.error("Critical Auth Failure:", err);
             }
         };
 
         onAuthStateChanged(auth, (user) => {
             currentUser = user;
             if (user) {
-                // Initialize listener immediately once auth confirmed
-                initLeadsListener();
+                isAuthReady = true;
+                // Re-init listener if we are currently on the admin page
+                if (!document.getElementById('page-admin').classList.contains('hidden')) {
+                    initLeadsListener();
+                }
             }
         });
 
@@ -371,16 +370,29 @@
         window.navigateTo = (pageId) => {
             document.querySelectorAll('[id^="page-"]').forEach(p => p.classList.add('hidden'));
             const target = document.getElementById(pageId);
-            if(target) target.classList.remove('hidden');
+            if(target) {
+                target.classList.remove('hidden');
+                if (pageId === 'page-admin') {
+                    initLeadsListener();
+                }
+            }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
-        window.promptAdminAccess = () => document.getElementById('password-modal').classList.remove('hidden');
+        window.promptAdminAccess = () => {
+            document.getElementById('password-modal').classList.remove('hidden');
+            document.getElementById('admin-pass').value = '';
+            document.getElementById('admin-pass').focus();
+        };
 
         window.verifyAdminAccess = () => {
-            if (document.getElementById('admin-pass').value === '1974') {
+            const pass = document.getElementById('admin-pass').value;
+            if (pass === '1974') {
                 document.getElementById('password-modal').classList.add('hidden');
                 window.navigateTo('page-admin');
+            } else {
+                document.getElementById('admin-pass').classList.add('border-red-500');
+                setTimeout(() => document.getElementById('admin-pass').classList.remove('border-red-500'), 1000);
             }
         };
 
@@ -389,12 +401,7 @@
         // FORM HANDLERS
         window.handleOptIn = async (e) => {
             e.preventDefault();
-            // Wait for auth if it's still processing
-            if (isAuthProcessing) return;
-            if (!currentUser) {
-                await initAuth();
-                if (!currentUser) return;
-            }
+            if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('optin-btn');
             const originalHtml = btn.innerHTML;
@@ -408,17 +415,17 @@
             };
 
             try {
-                await addDoc(getLeadsPath(), payload);
+                await addDoc(getLeadsRef(), payload);
                 window.navigateTo('page-delivery');
             } catch (err) {
-                console.error("Submission failed:", err);
+                console.error("Opt-in save failed:", err);
                 btn.innerHTML = originalHtml;
             }
         };
 
         window.handleCoachingSubmit = async (e) => {
             e.preventDefault();
-            if (isAuthProcessing || !currentUser) return;
+            if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('coaching-btn');
             const originalHtml = btn.innerHTML;
@@ -435,35 +442,34 @@
             };
 
             try {
-                await addDoc(getLeadsPath(), payload);
+                await addDoc(getLeadsRef(), payload);
                 window.navigateTo('page-thankyou');
             } catch (err) {
-                console.error("Coaching failed:", err);
+                console.error("Coaching submission failed:", err);
                 btn.innerHTML = originalHtml;
             }
         };
 
-        // ADMIN DIRECTORY LISTENER
+        // ADMIN LISTENER
         function initLeadsListener() {
             if (unsubscribeLeads) unsubscribeLeads();
-            
-            // Wait until user exists (Rule 3)
             if (!currentUser) return;
 
-            unsubscribeLeads = onSnapshot(getLeadsPath(), (snap) => {
-                const container = document.getElementById('leads-container');
-                if (!container) return;
+            const container = document.getElementById('leads-container');
+            container.innerHTML = '<div class="flex justify-center py-10"><div class="loader"></div></div>';
+
+            unsubscribeLeads = onSnapshot(getLeadsRef(), (snap) => {
                 container.innerHTML = '';
                 
                 if (snap.empty) {
-                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No active leads in directory.</p>';
+                    container.innerHTML = '<p class="text-gray-500 text-center py-12">No lead data available yet.</p>';
                     return;
                 }
 
                 const leads = [];
                 snap.forEach(docSnap => leads.push({ id: docSnap.id, ...docSnap.data() }));
                 
-                // Rule 2: In-memory sorting for stability
+                // Manual Sort (Rule 2)
                 leads.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
                 leads.forEach(lead => {
@@ -472,28 +478,27 @@
                     div.innerHTML = `
                         <div class="space-y-1">
                             <p class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
-                            <p class="text-white font-bold">${lead.name || 'Anonymous'}</p>
-                            <p class="text-gray-400 text-xs">${lead.email || lead.phone || 'No Info'}</p>
-                            ${lead.why ? `<p class="text-[10px] text-gray-600 mt-2 max-w-sm italic">"${lead.why}"</p>` : ''}
+                            <p class="text-white font-bold text-sm">${lead.name || 'Anonymous'}</p>
+                            <p class="text-gray-400 text-[11px]">${lead.email || lead.phone || 'No Contact'}</p>
+                            ${lead.why ? `<p class="text-[10px] text-gray-500 mt-2 max-w-sm italic line-clamp-2">"${lead.why}"</p>` : ''}
                         </div>
-                        <button onclick="window.deleteLead('${lead.id}')" class="text-[10px] text-red-400/30 hover:text-red-500 uppercase font-black px-4 py-2">Delete</button>
+                        <button onclick="window.deleteLead('${lead.id}')" class="text-[9px] text-red-400/50 hover:text-red-500 uppercase font-black px-4 py-2 transition-colors">Delete</button>
                     `;
                     container.appendChild(div);
                 });
             }, (err) => {
-                console.warn("Retrying directory listener...", err);
-                // Attempt to re-init after a delay if error occurs (likely auth lag)
-                setTimeout(initLeadsListener, 2000);
+                console.warn("Retrying listener due to error:", err);
+                setTimeout(initLeadsListener, 3000);
             });
         }
 
         window.deleteLead = async (id) => {
             if (!currentUser) return;
             try {
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', collectionName, id);
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', collectionPath, id);
                 await deleteDoc(docRef);
             } catch(e) {
-                console.error("Delete Error:", e);
+                console.error("Delete failed:", e);
             }
         };
     </script>
