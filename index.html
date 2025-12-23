@@ -297,7 +297,7 @@
                 <h2 class="text-3xl font-bold text-white tracking-tight">Master Lead Directory</h2>
                 <button onclick="window.navigateTo('page-optin')" class="text-xs text-gray-500 hover:text-white uppercase tracking-widest">Close</button>
             </div>
-            <div id="leads-container" class="space-y-4">
+            <div id="leads-container" class="space-y-6">
                 <div class="flex justify-center py-10"><div class="loader"></div></div>
             </div>
         </div>
@@ -411,7 +411,7 @@
             if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('optin-btn');
-            const originalText = btn.innerText;
+            const originalHTML = btn.innerHTML;
             btn.innerHTML = '<div class="loader"></div>';
 
             const payload = {
@@ -426,8 +426,9 @@
                 window.navigateTo('page-delivery');
             } catch (err) {
                 console.error("Save failed:", err);
-                // Fallback: move page anyway so user experience isn't broken
                 window.navigateTo('page-delivery');
+            } finally {
+                btn.innerHTML = originalHTML;
             }
         };
 
@@ -436,6 +437,7 @@
             if (!isAuthReady || !currentUser) return;
 
             const btn = document.getElementById('coaching-btn');
+            const originalHTML = btn.innerHTML;
             btn.innerHTML = '<div class="loader"></div>';
             
             const payload = {
@@ -454,6 +456,8 @@
             } catch (err) {
                 console.error("Save failed:", err);
                 window.navigateTo('page-thankyou');
+            } finally {
+                btn.innerHTML = originalHTML;
             }
         };
 
@@ -481,20 +485,45 @@
 
                 leads.forEach(lead => {
                     const el = document.createElement('div');
-                    el.className = 'glass-card p-6 rounded-2xl flex justify-between items-center border-white/5';
+                    el.className = 'glass-card p-6 rounded-2xl flex flex-col gap-4 border-white/5';
+                    
+                    // Specific details view
+                    let detailsHTML = '';
+                    if(lead.type === 'Coaching') {
+                        detailsHTML = `
+                            <div class="grid grid-cols-2 gap-4 mt-2 pt-4 border-t border-white/5">
+                                <div>
+                                    <p class="text-[8px] text-gray-500 uppercase font-bold tracking-widest">Focus Area</p>
+                                    <p class="text-white text-xs">${lead.focus || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-[8px] text-gray-500 uppercase font-bold tracking-widest">Discipline</p>
+                                    <p class="text-yellow-500 text-xs font-bold">${lead.discipline || '0'}/10</p>
+                                </div>
+                                <div class="col-span-2">
+                                    <p class="text-[8px] text-gray-500 uppercase font-bold tracking-widest">"Why"</p>
+                                    <p class="text-gray-300 text-xs italic leading-relaxed">"${lead.why || 'No response provided.'}"</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+
                     el.innerHTML = `
-                        <div class="space-y-1">
-                            <p class="text-[9px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
-                            <p class="text-white font-bold text-sm">${lead.name || 'Anonymous'}</p>
-                            <p class="text-gray-400 text-[11px]">${lead.email || lead.phone || 'No Contact'}</p>
+                        <div class="flex justify-between items-start">
+                            <div class="space-y-1">
+                                <p class="text-[9px] text-yellow-500 font-bold uppercase tracking-widest">${lead.type}</p>
+                                <p class="text-white font-bold text-lg">${lead.name || 'Anonymous'}</p>
+                                <p class="text-gray-400 text-xs font-mono tracking-tight">${lead.email || lead.phone || 'No Contact'}</p>
+                            </div>
+                            <button onclick="window.deleteLead('${lead.id}')" class="text-[9px] text-red-500/50 hover:text-red-500 uppercase font-black px-3 py-2 border border-red-500/20 rounded-lg transition-colors">Delete</button>
                         </div>
-                        <button onclick="window.deleteLead('${lead.id}')" class="text-[9px] text-red-400/30 hover:text-red-500 uppercase font-black px-4 py-2 transition-colors">Delete</button>
+                        ${detailsHTML}
+                        <div class="text-[8px] text-gray-600 text-right mt-1 uppercase tracking-widest">Received: ${new Date(lead.timestamp).toLocaleString()}</div>
                     `;
                     container.appendChild(el);
                 });
             }, (err) => {
-                container.innerHTML = `<p class="text-red-500 text-center py-12 text-[10px] uppercase tracking-widest">Permission Denied or Connection Lag. Retrying...</p>`;
-                setTimeout(initLeadsListener, 3000);
+                container.innerHTML = `<p class="text-red-500 text-center py-12 text-[10px] uppercase tracking-widest">Permission Denied. Authentication Required.</p>`;
             });
         }
 
